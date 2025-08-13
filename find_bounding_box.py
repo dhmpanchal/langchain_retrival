@@ -6,7 +6,7 @@ def _normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip())
 
 def _tokenize(s: str) -> List[str]:
-    # Simple whitespace tokenization; keep “exact words” behavior
+    # Simple whitespace tokenization; keep "exact words" behavior
     return _normalize_ws(s).split(" ")
 
 def _find_token_sequences(page_words: List[Tuple[float,float,float,float,str,int,int,int]],
@@ -55,7 +55,7 @@ def find_term_coordinates_in_pdf(
     Args:
       pdf_path: path to the PDF.
       diagnoses: list of dicts with keys: 'snomed_ct_term' (str), 'source' (str).
-      case_sensitive: whether matching should be case-sensitive (default True for “exact” match).
+      case_sensitive: whether matching should be case-sensitive (default True for "exact" match).
 
     Returns:
       List of dicts: {
@@ -133,3 +133,72 @@ def find_term_coordinates_in_pdf(
         doc.close()
 
     return results
+
+
+def build_term_to_codes(snomed_codes_list):
+    """
+    Convert the snomed_codes_list format to a simple term -> codes mapping.
+    
+    Args:
+        snomed_codes_list: format: [{ "<term>": [ {id, key, value, description}, ... ] }, ...]
+    
+    Returns:
+        dict: {term: [codes]}
+    """
+    term_to_codes = {}
+    for item in snomed_codes_list or []:
+        if isinstance(item, dict):
+            for term, codes in item.items():
+                term_to_codes[(term or "").strip()] = codes or []
+    return term_to_codes
+
+
+def highlight_terms_in_pdf(pdf_path, output_pdf_path, diagnoses, snomed_codes_list, case_sensitive=True):
+    """
+    Highlight terms in PDF and save with annotations containing SNOMED codes.
+    
+    Args:
+        pdf_path: input PDF path
+        output_pdf_path: output PDF path with highlights
+        diagnoses: list of dicts with at least {'snomed_ct_term': str, 'source': str}
+        snomed_codes_list: [{ term: [ {id, key, value, description}, ... ] }, ...]
+        case_sensitive: whether matching should be case-sensitive
+    
+    Returns:
+        str: path to the saved highlighted PDF
+    """
+    term_to_codes = build_term_to_codes(snomed_codes_list)
+    hits = find_term_coordinates_in_pdf(pdf_path, diagnoses, case_sensitive=case_sensitive)
+
+    doc = fitz.open(pdf_path)
+    try:
+        for hit in hits:
+            page = doc[hit["page_index"]]
+            rect = fitz.Rect(hit["x0"], hit["y0"], hit["x1"], hit["y1"])
+            annot = page.add_highlight_annot(rect)
+
+            term = hit["term"]
+            codes = term_to_codes.get(term, [])
+
+            lines = []
+            for c in (codes[:10] if codes else []):  # Limit to first 10 codes
+                cid = str(c.get("id") or c.get("key") or "")
+                val = str(c.get("value") or "")
+                desc = str(c.get("description") or "")
+                if desc:
+                    lines.append(f"{cid}: {val} — {desc}")
+                else:
+                    lines.append(f"{cid}: {val}")
+            content = f"SNOMED for '{term}':\n" + ("\n".join(lines) if lines else "No codes found")
+
+            # Set annotation info so PDF viewers show it when clicked
+            annot.set_info(title="SNOMED", content=content, subject=term)
+            annot.set_colors(stroke=(1, 1, 0))  # yellow highlight border
+            annot.set_opacity(0.3)
+            annot.update()
+
+        doc.save(output_pdf_path, deflate=True)
+    finally:
+        doc.close()
+
+    return output_pdf_path

@@ -1,6 +1,7 @@
 import json
 from typing import List
 from new_cc_poc import POC
+from find_bounding_box import highlight_terms_in_pdf
 
 
 def get_snomed_codes_for_active_diagonosis(final_active_diagnosis: dict):
@@ -72,6 +73,8 @@ def clean_diagnosis_data(active_diagnosis: dict, snomed_codes: List[dict]) -> di
 
 def main():
     file_path = "./data/doc1.txt"
+    pdf_path = "./data/gastroscopy report 02 jun (1).pdf"
+    output_pdf_path = "./data/gastroscopy_report.pdf"
     poc = POC()
     # Step 1: upload read document content and create an embedings and store into vector DB
     # text = poc.read_text_document(file_path)
@@ -90,6 +93,21 @@ def main():
     # Step 2.2: Clean diagnosis data by attaching exact SNOMED codes
     cleaned = clean_diagnosis_data(final_active_diagnosis, snomed_codes)
     print(f"Cleaned Active diagnosis: \n{cleaned}")
+
+    # Step 2.3: Highlight terms in PDF and save with SNOMED code annotations
+    try:
+        highlighted_pdf = highlight_terms_in_pdf(
+            pdf_path=pdf_path,
+            output_pdf_path=output_pdf_path,
+            diagnoses=cleaned['diagnoses'],
+            snomed_codes_list=snomed_codes,
+            case_sensitive=True
+        )
+        print(f"PDF with highlights saved to: {highlighted_pdf}")
+        print("Open the PDF and click on highlighted terms to see SNOMED codes!")
+    except Exception as e:
+        print(f"Error highlighting PDF: {e}")
+        print("Make sure the PDF file exists and PyMuPDF is installed: pip install pymupdf")
 
     # Step 3: Find Active procedures using retrievalQa in langchain
     # active_procedures = poc.get_active_procedures(file_path)

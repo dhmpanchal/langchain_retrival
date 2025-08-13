@@ -1,0 +1,141 @@
+FILED BY SB102 Jun 2025
+
+ Chesterfield Royal Hospital NHS
+ Foundation Trust
+
+ 
+
+ Reasons Dysphagia
+ Oesophageal stricture
+ Co-morbidities
+ Other (Specify=Previous endocarditis)
+ Asthma
+ Anxiety
+ Current Medication
+ None
+ WHO/ECOG Grade
+ Grade 0
+
+ Findings & Procedures
+
+ Region: Oesophagus
+
+ 1 - Upper oesophagus: (1 image)
+
+ 2 - - OG junction: (2 images)
+ 3 cm sliding Hiatal hernia
+ Stricture, benign in appearance, traversable after dilation.
+ 35cm from incisors
+
+ Dilated to 12mm using Balloon dilator
+
+ Region: Stomach
+
+ 3 - Upper body: (2 images)
+
+ 4 - Upper body: (2 images)
+
+ 5 - - Lesser curve middle body: (2 images)
+
+ 6 - Antrum: (1 image)
+
+ Region: Duodenum
+
+ 7 - Bulb: (1 image)
+
+ 8 - - Second part: (1 image)
+
+ Diagnosis
+
+ Oesophagus - Hiatus hernia, Oesophagus - Oesophageal
+ stricture (Type: Benign), Stomach - Normal, Duodenum -
+ Normal
+
+ Procedure Comments
+
+ OGD for dilatation of an oesophageal stricture thought to
+ be benign. Previously dilated to 12mm in April 2024. On
+ Lansoprazole BD. There remained a non-traversable lower
+ oesophageal stricture at 35 cm from the incisors. This was
+ balloon dilated incrementally from 10 mm to 12 mm. I was
+ then able to traverse it. The stricture did look ulcerated. I
+ did not biopsy it as I was under the impression it had
+ previously been sampled but after the procedure I realised
+ there were no biopsies taken previously. He should
+ continue BD Lansoprazole. I have requested a repeat OGD
+ to be done in 4 weeks ? further dilatation + take biopsies.
+
+ 
+ Procedure Date
+ 22-May-2025 11:23
+ EMS Report Id
+ 126218
+
+ Referral Details
+
+ Registered GP
+
+ Patient Category NHS/Outpatient/Routine
+ Referral Date
+ 28-Jan-2025
+ Referral Source
+ Out Patients
+ Registered GP
+ Dr JA Eboreime
+ Referring Consultant
+ G Naylor
+
+ Procedure Summary
+
+ Endoscopist Dr Answar Abdulrehman
+ Instrument
+ OLYM 2625038 (Olympus)
+ Medication
+ 3 mg Midazolam
+ Throat Spray
+ 50 mcg Fentanyl
+ Extent of Exam
+ Second part
+ Route
+ Oral
+
+ MEDILOGIK EMS
+
+ Chesterfield Royal Hospital NHS
+ Foundation Trust
+ Chesterfield Royal Hospital
+
+ Gastroscopy Report
+
+ Name BACHE, Glyn .... (Mr)
+ 06-Jan-1978 (47y) (Male)
+
+ Address 62 Clowne Road,
+ Barlborough, Chesterfield,
+ S43 4EJ
+
+ Hospital No. G267836
+ NHS No.
+ 416 786 8822
+ Procedure Date 22-May-2025 11:23
+ EMS Report Id
+ 126218
+
+ Patient Management & Follow Up
+
+ Post procedure instructions:
+
+ 1. 15 minutes obs for the next hour
+
+ 2. If well then can have water
+
+ 3. If well after water then can eat and drink
+
+ Return to Referring Consultant
+ Further Upper GI endoscopy: Dilatation required at Chesterfield Royal Hospital by 19-Jun-2025
+ the
+ Dr Answar Abdulrehman
+ Consultant Gastroenterologist
+ Recipients: Registered GP, Ref. Consultant, Patient, Case Notes
+
+here is the patient report just keep it in your memory

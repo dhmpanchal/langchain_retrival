@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import List, Dict
 from new_cc_poc import POC
 from find_bounding_box import highlight_terms_in_pdf
 
@@ -20,7 +20,7 @@ def get_snomed_codes_for_active_diagonosis(final_active_diagnosis: dict):
     ]
 
 
-def clean_diagnosis_data(active_diagnosis: dict, snomed_codes: List[dict]) -> dict:
+def clean_diagnosis_data_v1(active_diagnosis: dict, snomed_codes: List[dict]) -> dict:
     """
     For each diagnosis, find the exact matching SNOMED CT term in snomed_codes and add its code as 'snomed_code'.
     Returns a dict with the same shape as active_diagnosis: {'diagnoses': [ ... ]}
@@ -70,11 +70,54 @@ def clean_diagnosis_data(active_diagnosis: dict, snomed_codes: List[dict]) -> di
 
     return {'diagnoses': cleaned}
 
+def clean_diagnosis_data(active_diagnosis: dict, snomed_codes: List[dict]) -> dict:
+    """
+    For each diagnosis in active_diagnosis:
+    - Use the 'term' to look up in snomed_codes.
+    - If found, take the 0th index candidate from the matched list.
+    - Use 'key' if available, otherwise 'id', as the snomed_code.
+    - Return a dict with the same shape: {'diagnoses': [ ... ]}
+    """
+    if not isinstance(active_diagnosis, dict):
+        return {'diagnoses': []}
+
+    diagnoses = active_diagnosis.get('diagnoses')
+    if not isinstance(diagnoses, list):
+        return {'diagnoses': []}
+
+    # Convert snomed_codes list of dicts into a term-to-candidates mapping
+    term_to_candidates: Dict[str, List[dict]] = {}
+    for entry in snomed_codes or []:
+        if isinstance(entry, dict):
+            for term, candidates in entry.items():
+                if isinstance(candidates, list):
+                    term_to_candidates[term] = candidates
+
+    cleaned: List[dict] = []
+    for diag in diagnoses:
+        if not isinstance(diag, dict):
+            continue
+        
+        term = (diag.get('term') or '').strip()
+        code_value = ''
+
+        # Look up by term
+        candidates = term_to_candidates.get(term)
+        if candidates and len(candidates) > 0:
+            first_candidate = candidates[0]
+            code_value = str(first_candidate.get('key') or first_candidate.get('id') or '')
+
+        new_item = dict(diag)
+        new_item['snomed_code'] = code_value
+        cleaned.append(new_item)
+
+    return {'diagnoses': cleaned}
+
 
 def main():
     file_path = "./data/doc1.txt"
     pdf_path = "./data/gastroscopy report 02 jun (1).pdf"
-    output_pdf_path = "./data/gastroscopy_report.pdf"
+    output_pdf_path = "./data/gastroscopy_report_1.pdf"
     poc = POC()
     # Step 1: upload read document content and create an embedings and store into vector DB
     # text = poc.read_text_document(file_path)
@@ -88,7 +131,8 @@ def main():
 
     #Step 2.1: Fetch Snowmed codes base on Snowmed CT terms from NHS search API
     snomed_codes = get_snomed_codes_for_active_diagonosis(final_active_diagnosis)
-    print(f"Snomed Codes: {snomed_codes}")
+    # print(f"Snomed Codes: {snomed_codes}")
+    
 
     # Step 2.2: Clean diagnosis data by attaching exact SNOMED codes
     cleaned = clean_diagnosis_data(final_active_diagnosis, snomed_codes)
@@ -101,7 +145,7 @@ def main():
             output_pdf_path=output_pdf_path,
             diagnoses=cleaned['diagnoses'],
             snomed_codes_list=snomed_codes,
-            case_sensitive=True
+            case_sensitive=False
         )
         print(f"PDF with highlights saved to: {highlighted_pdf}")
         print("Open the PDF and click on highlighted terms to see SNOMED codes!")

@@ -1,7 +1,8 @@
 import json
 from typing import List, Dict
 from new_cc_poc import POC
-from find_bounding_box import highlight_terms_in_pdf
+from find_bounding_box import find_term_coordinates_in_pdf
+from ocr import find_term_coordinates_with_ocr, find_term_coordinates_with_ocr_v1, find_term_coordinates_with_ocr_v2, find_term_coordinates_with_ocr_v3, find_term_coordinates_with_ocr_v4, find_term_coordinates_with_ocr_v5, find_term_coordinates_with_ocr_v6, find_term_coordinates_with_ocr_v7, highlight_terms_in_pdf, highlight_terms_with_ocr_coordinates, highlight_terms_with_ocr_coordinates_v2, highlight_terms_with_ocr_coordinates_v3, highlight_terms_with_ocr_coordinates_v4
 
 
 def get_snomed_codes_for_active_diagonosis(final_active_diagnosis: dict):
@@ -98,7 +99,7 @@ def clean_diagnosis_data(active_diagnosis: dict, snomed_codes: List[dict]) -> di
         if not isinstance(diag, dict):
             continue
         
-        term = (diag.get('term') or '').strip()
+        term = (diag.get('snomed_ct_term') or '').strip()
         code_value = ''
 
         # Look up by term
@@ -127,7 +128,7 @@ def main():
     # Step 2: Find Active diagnosis using retrievalQa in langchain
     active_diagnosis = poc.get_active_diagnosis(file_path)
     final_active_diagnosis = json.loads(active_diagnosis)
-    print(f"Active diagnosis: \n{final_active_diagnosis}")
+    # print(f"Active diagnosis: \n{final_active_diagnosis}")
 
     #Step 2.1: Fetch Snowmed codes base on Snowmed CT terms from NHS search API
     snomed_codes = get_snomed_codes_for_active_diagonosis(final_active_diagnosis)
@@ -137,21 +138,27 @@ def main():
     # Step 2.2: Clean diagnosis data by attaching exact SNOMED codes
     cleaned = clean_diagnosis_data(final_active_diagnosis, snomed_codes)
     print(f"Cleaned Active diagnosis: \n{cleaned}")
+    
+    diagnoses = cleaned['diagnoses']
+    hits = find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True)
+    print(f"Found OCR-based bounding boxes for {len(hits)} terms in {pdf_path}")
+    print(f"hits: {hits}")
 
     # Step 2.3: Highlight terms in PDF and save with SNOMED code annotations
-    try:
-        highlighted_pdf = highlight_terms_in_pdf(
-            pdf_path=pdf_path,
-            output_pdf_path=output_pdf_path,
-            diagnoses=cleaned['diagnoses'],
-            snomed_codes_list=snomed_codes,
-            case_sensitive=False
-        )
-        print(f"PDF with highlights saved to: {highlighted_pdf}")
-        print("Open the PDF and click on highlighted terms to see SNOMED codes!")
-    except Exception as e:
-        print(f"Error highlighting PDF: {e}")
-        print("Make sure the PDF file exists and PyMuPDF is installed: pip install pymupdf")
+    highlight_terms_with_ocr_coordinates_v4(pdf_path, output_pdf_path, hits, diagnoses)
+    # try:
+    #     highlighted_pdf = highlight_terms_in_pdf(
+    #         pdf_path=pdf_path,
+    #         output_pdf_path=output_pdf_path,
+    #         diagnoses=cleaned['diagnoses'],
+    #         snomed_codes_list=snomed_codes,
+    #         case_sensitive=False
+    #     )
+    #     print(f"PDF with highlights saved to: {highlighted_pdf}")
+    #     print("Open the PDF and click on highlighted terms to see SNOMED codes!")
+    # except Exception as e:
+    #     print(f"Error highlighting PDF: {e}")
+    #     print("Make sure the PDF file exists and PyMuPDF is installed: pip install pymupdf")
 
     # Step 3: Find Active procedures using retrievalQa in langchain
     # active_procedures = poc.get_active_procedures(file_path)

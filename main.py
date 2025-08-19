@@ -140,7 +140,7 @@ def main():
     print(f"Cleaned Active diagnosis: \n{cleaned}")
     
     diagnoses = cleaned['diagnoses']
-    hits = find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True)
+    hits = find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, max_gap=1)
     print(f"Found OCR-based bounding boxes for {len(hits)} terms in {pdf_path}")
     print(f"hits: {hits}")
 

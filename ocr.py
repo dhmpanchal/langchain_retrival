@@ -466,10 +466,11 @@ def find_term_coordinates_with_ocr_v5(pdf_path, diagnoses, allow_partial=True):
             if block['BlockType'] == "WORD":
                 text = block['Text']
                 box = block['Geometry']['BoundingBox']
-                left = ceil(width * box['Left'] / scaling_factor)
-                top = ceil(height * box['Top'] / scaling_factor)
-                right = ceil(left + (width * box['Width']) / scaling_factor)
-                bottom = ceil(top + (height * box['Height']) / scaling_factor)
+                # Textract returns normalized [0,1] bbox; map directly to pixel space
+                left = int(round(box['Left'] * width))
+                top = int(round(box['Top'] * height))
+                right = int(round((box['Left'] + box['Width']) * width))
+                bottom = int(round((box['Top'] + box['Height']) * height))
                 words_and_boxes.append((text, [
                     (left, top), (right, top), (right, bottom), (left, bottom)
                 ]))
@@ -483,30 +484,30 @@ def find_term_coordinates_with_ocr_v5(pdf_path, diagnoses, allow_partial=True):
         if not term:
             continue
 
-        # Normalize term for matching
-        # term_clean = re.sub(r'[^\w\s]', '', term)
-        # term_clean = term
-        term_clean = re.sub(r'[^\w\s()]', '', term)
-        print(f"[INFO] Normalized term: {term_clean}")
-        term_words = term_clean.split()
-        print(f"[INFO] Term words: {term_words}")
+        # Normalize term for matching: lowercase and strip ALL punctuation consistently
+        term_clean = re.sub(r'[^\w\s]', ' ', term).lower()
+        term_words = [t for t in term_clean.split() if t]
+        print(f"[INFO] Normalized term words: {term_words}")
+        if not term_words:
+            continue
         term_hits = []
 
         for page_index, words_and_boxes in all_words_and_boxes:
-            words = [re.sub(r'[^\w\s]', '', w) for w, _ in words_and_boxes]
+            # Normalize OCR words the same way as the term (lowercase + strip punctuation)
+            words_norm = [re.sub(r'[^\w\s]', ' ', w).lower() for w, _ in words_and_boxes]
 
             i = 0
-            while i < len(words):
-                if words[i] == term_words[0]:
-                    # Possible start of phrase
+            while i < len(words_norm):
+                if words_norm[i] == term_words[0]:
+                    # Possible start of phrase (contiguous match)
                     match_coords = [words_and_boxes[i][1]]
                     j = 1
-                    while j < len(term_words) and i + j < len(words) and words[i + j] == term_words[j]:
+                    while j < len(term_words) and i + j < len(words_norm) and words_norm[i + j] == term_words[j]:
                         match_coords.append(words_and_boxes[i + j][1])
                         j += 1
 
                     if j == len(term_words):
-                        # Full phrase matched
+                        # Full phrase matched contiguously
                         x0 = min(c[0][0] for c in match_coords)
                         y0 = min(c[0][1] for c in match_coords)
                         x1 = max(c[2][0] for c in match_coords)
@@ -517,14 +518,17 @@ def find_term_coordinates_with_ocr_v5(pdf_path, diagnoses, allow_partial=True):
 
                 i += 1
 
-            # Fallback: Partial match if phrase not found
+            # Fallback: Partial match if phrase not found on any page
             if not term_hits and allow_partial:
-                for w, coords in words_and_boxes:
-                    if w.lower() in term_words:
+                for idx, (w, coords) in enumerate(words_and_boxes):
+                    w_norm = words_norm[idx]
+                    if w_norm and any(SequenceMatcher(None, w_norm, tw).ratio() >= sim_threshold for tw in term_words):
                         x0, y0 = coords[0]
                         x1, y1 = coords[2]
                         term_hits.append((page_index + 1, (x0, y0, x1, y1)))
-
+        
+        
+        print(f"[INFO] OCR matches found for: {term} is {term_hits}")
         if term_hits:
             results[term] = term_hits
         else:
@@ -568,10 +572,11 @@ def find_term_coordinates_with_ocr_v6(pdf_path, diagnoses, allow_partial=True, m
             if block['BlockType'] == "WORD":
                 text = block['Text']
                 box = block['Geometry']['BoundingBox']
-                left = ceil(width * box['Left'] / scaling_factor)
-                top = ceil(height * box['Top'] / scaling_factor)
-                right = ceil(left + (width * box['Width']) / scaling_factor)
-                bottom = ceil(top + (height * box['Height']) / scaling_factor)
+                # Textract returns normalized [0,1] coordinates; convert to pixels directly
+                left = int(round(box['Left'] * width))
+                top = int(round(box['Top'] * height))
+                right = int(round((box['Left'] + box['Width']) * width))
+                bottom = int(round((box['Top'] + box['Height']) * height))
                 words_and_boxes.append((text, [
                     (left, top), (right, top), (right, bottom), (left, bottom)
                 ]))
@@ -594,7 +599,7 @@ def find_term_coordinates_with_ocr_v6(pdf_path, diagnoses, allow_partial=True, m
 
             i = 0
             while i < len(words):
-                if words[i].lower() == term_words[0].lower():
+                if words[i] == term_words[0]:
                     # Possible start of phrase
                     match_coords = [words_and_boxes[i][1]]
                     j = 1
@@ -602,7 +607,7 @@ def find_term_coordinates_with_ocr_v6(pdf_path, diagnoses, allow_partial=True, m
                     gap = 0
 
                     while j < len(term_words) and k < len(words):
-                        if words[k].lower() == term_words[j].lower():
+                        if words[k] == term_words[j]:
                             match_coords.append(words_and_boxes[k][1])
                             j += 1
                             gap = 0
@@ -627,7 +632,7 @@ def find_term_coordinates_with_ocr_v6(pdf_path, diagnoses, allow_partial=True, m
             # Fallback: partial word matches
             if not term_hits and allow_partial:
                 for w, coords in words_and_boxes:
-                    if w.lower() in [tw.lower() for tw in term_words]:
+                    if w in [tw for tw in term_words]:
                         x0, y0 = coords[0]
                         x1, y1 = coords[2]
                         term_hits.append((page_index + 1, (x0, y0, x1, y1)))
@@ -639,9 +644,12 @@ def find_term_coordinates_with_ocr_v6(pdf_path, diagnoses, allow_partial=True, m
 
     return results
 
-def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, max_gap=2):
+from difflib import SequenceMatcher
+
+def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, max_gap=2, sim_threshold=0.82):
     """
     Handles multi-line phrase matching and creates tight bounding boxes for matched words only.
+    Improved punctuation handling for medical terminology.
     """
     results = {}
 
@@ -678,27 +686,45 @@ def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, m
 
         all_words_and_boxes.append((page_index, words_and_boxes))
 
+    def normalize_text(text):
+        """Improved normalization for medical terminology"""
+        # Replace common medical punctuation with spaces
+        text = re.sub(r'[():\-–—,;]', ' ', text)
+        # Remove other punctuation except apostrophes (for terms like "patient's")
+        text = re.sub(r'[^\w\s\']', ' ', text)
+        # Normalize whitespace and convert to lowercase
+        text = re.sub(r'\s+', ' ', text.lower().strip())
+        return text
+
     for diag in diagnoses or []:
         term = (diag.get("term") or "").strip()
         print(f"[INFO] Processing term: {term}")
         if not term:
             continue
 
-        term_clean = re.sub(r'[^\w\s()]', '', term)
-        term_words = term_clean.split()
+        # Improved normalization
+        term_clean = normalize_text(term)
+        term_words = [t for t in term_clean.split() if t]
+        if not term_words:
+            continue
+        
+        print(f"[DEBUG] Normalized term words: {term_words}")
         term_hits = []
 
         for page_index, words_and_boxes in all_words_and_boxes:
-            words = [re.sub(r'[^\w\s()]', '', w) for w, _ in words_and_boxes]
-
+            # Normalize OCR words using same function
+            words_norm = [normalize_text(w) for w, _ in words_and_boxes]
+            
             i = 0
-            while i < len(words):
-                if words[i].lower() == term_words[0].lower():
+            while i < len(words_norm):
+                # fuzzy compare for first token
+                if words_norm[i] and SequenceMatcher(None, words_norm[i], term_words[0]).ratio() >= sim_threshold:
                     match_boxes = [words_and_boxes[i][1]]
+                    start_idx = i
                     j, k, gap = 1, i + 1, 0
 
-                    while j < len(term_words) and k < len(words):
-                        if words[k].lower() == term_words[j].lower():
+                    while j < len(term_words) and k < len(words_norm):
+                        if words_norm[k] and SequenceMatcher(None, words_norm[k], term_words[j]).ratio() >= sim_threshold:
                             match_boxes.append(words_and_boxes[k][1])
                             j += 1
                             gap = 0
@@ -709,21 +735,27 @@ def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, m
                         k += 1
 
                     if j == len(term_words):
-                        # Merge only matched boxes
-                        all_points = [pt for box in match_boxes for pt in box]
+                        # Merge all tokens between first and last indices (include punctuation like (), ':')
+                        end_idx = k - 1
+                        span_boxes = [words_and_boxes[t][1] for t in range(start_idx, end_idx + 1)]
+                        all_points = [pt for box in span_boxes for pt in box]
                         x0 = min(p[0] for p in all_points)
                         y0 = min(p[1] for p in all_points)
                         x1 = max(p[0] for p in all_points)
                         y1 = max(p[1] for p in all_points)
                         term_hits.append((page_index + 1, (x0, y0, x1, y1)))
+                        print(f"[DEBUG] Found match for '{term}' at page {page_index + 1}")
                         i = k
                         continue
 
                 i += 1
 
             if not term_hits and allow_partial:
-                for w, coords in words_and_boxes:
-                    if w.lower() in [tw.lower() for tw in term_words]:
+                print(f"[DEBUG] Trying partial matching for: {term}")
+                term_word_set = set(term_words)
+                for idx, (w, coords) in enumerate(words_and_boxes):
+                    w_norm = words_norm[idx]
+                    if w_norm and w_norm in term_word_set:
                         x0, y0 = coords[0]
                         x1, y1 = coords[2]
                         term_hits.append((page_index + 1, (x0, y0, x1, y1)))
@@ -735,11 +767,11 @@ def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, m
 
     return results
 
-def normalize_text(text):
-    """Normalize text by lowering, removing extra spaces and punctuation."""
-    text = text.lower()
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+# def normalize_text(text):
+#     """Normalize text by lowering, removing extra spaces and punctuation."""
+#     text = text.lower()
+#     text = re.sub(r'\s+', ' ', text)
+#     return text.strip()
 
 def find_term_coordinates_with_ocr(pdf_path, diagnoses, allow_partial=True):
     """

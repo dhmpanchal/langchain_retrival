@@ -646,10 +646,10 @@ def find_term_coordinates_with_ocr_v6(pdf_path, diagnoses, allow_partial=True, m
 
 from difflib import SequenceMatcher
 
-def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, max_gap=2, sim_threshold=0.82):
+def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, max_gap=3, sim_threshold=0.82):
     """
-    Handles multi-line phrase matching and creates tight bounding boxes for matched words only.
-    Improved punctuation handling for medical terminology.
+    Handles multi-line phrase matching and creates separate bounding boxes for each term.
+    Prevents overlapping highlights by tracking matched word positions.
     """
     results = {}
 
@@ -687,14 +687,17 @@ def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, m
         all_words_and_boxes.append((page_index, words_and_boxes))
 
     def normalize_text(text):
-        """Improved normalization for medical terminology"""
-        # Replace common medical punctuation with spaces
-        text = re.sub(r'[():\-–—,;]', ' ', text)
-        # Remove other punctuation except apostrophes (for terms like "patient's")
-        text = re.sub(r'[^\w\s\']', ' ', text)
-        # Normalize whitespace and convert to lowercase
-        text = re.sub(r'\s+', ' ', text.lower().strip())
+        """Improved normalization for medical terminology - preserve case and important punctuation"""
+        # Only replace hyphens and commas with spaces, preserve parentheses and colons
+        text = re.sub(r'[\-–—,;]', ' ', text)
+        # Remove only unnecessary punctuation, keep parentheses, colons, and apostrophes
+        text = re.sub(r'[^\w\s\'\(\):]', ' ', text)
+        # Normalize whitespace but preserve original case
+        text = re.sub(r'\s+', ' ', text.strip())
         return text
+
+    # Track all matches to prevent overlaps
+    all_matches = []
 
     for diag in diagnoses or []:
         term = (diag.get("term") or "").strip()
@@ -717,15 +720,26 @@ def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, m
             
             i = 0
             while i < len(words_norm):
-                # fuzzy compare for first token
-                if words_norm[i] and SequenceMatcher(None, words_norm[i], term_words[0]).ratio() >= sim_threshold:
-                    match_boxes = [words_and_boxes[i][1]]
+                # Check if this position was already matched by a previous term
+                already_matched = any(
+                    match_page == page_index + 1 and 
+                    i >= match_start and i <= match_end
+                    for _, match_page, match_start, match_end in all_matches
+                )
+                
+                if already_matched:
+                    i += 1
+                    continue
+
+                # fuzzy compare for first token (case-insensitive comparison)
+                if words_norm[i] and SequenceMatcher(None, words_norm[i].lower(), term_words[0].lower()).ratio() >= sim_threshold:
+                    matched_indices = [i]  # Track which word indices were matched
                     start_idx = i
                     j, k, gap = 1, i + 1, 0
 
                     while j < len(term_words) and k < len(words_norm):
-                        if words_norm[k] and SequenceMatcher(None, words_norm[k], term_words[j]).ratio() >= sim_threshold:
-                            match_boxes.append(words_and_boxes[k][1])
+                        if words_norm[k] and SequenceMatcher(None, words_norm[k].lower(), term_words[j].lower()).ratio() >= sim_threshold:
+                            matched_indices.append(k)
                             j += 1
                             gap = 0
                         else:
@@ -735,30 +749,48 @@ def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, m
                         k += 1
 
                     if j == len(term_words):
-                        # Merge all tokens between first and last indices (include punctuation like (), ':')
-                        end_idx = k - 1
-                        span_boxes = [words_and_boxes[t][1] for t in range(start_idx, end_idx + 1)]
-                        all_points = [pt for box in span_boxes for pt in box]
+                        # Create bounding box only for the matched words
+                        match_boxes = [words_and_boxes[idx][1] for idx in matched_indices]
+                        all_points = [pt for box in match_boxes for pt in box]
                         x0 = min(p[0] for p in all_points)
                         y0 = min(p[1] for p in all_points)
                         x1 = max(p[0] for p in all_points)
                         y1 = max(p[1] for p in all_points)
+                        
                         term_hits.append((page_index + 1, (x0, y0, x1, y1)))
-                        print(f"[DEBUG] Found match for '{term}' at page {page_index + 1}")
+                        
+                        # Record this match to prevent overlaps
+                        end_idx = max(matched_indices)
+                        all_matches.append((term, page_index + 1, start_idx, end_idx))
+                        
+                        print(f"[DEBUG] Found match for '{term}' at page {page_index + 1}, indices {matched_indices}")
                         i = k
                         continue
 
                 i += 1
 
+            # Only try partial matching if no full matches found
             if not term_hits and allow_partial:
                 print(f"[DEBUG] Trying partial matching for: {term}")
                 term_word_set = set(term_words)
                 for idx, (w, coords) in enumerate(words_and_boxes):
+                    # Check if this word position was already matched
+                    already_matched = any(
+                        match_page == page_index + 1 and 
+                        idx >= match_start and idx <= match_end
+                        for _, match_page, match_start, match_end in all_matches
+                    )
+                    
+                    if already_matched:
+                        continue
+                        
                     w_norm = words_norm[idx]
                     if w_norm and w_norm in term_word_set:
                         x0, y0 = coords[0]
                         x1, y1 = coords[2]
                         term_hits.append((page_index + 1, (x0, y0, x1, y1)))
+                        # Record partial match
+                        all_matches.append((term, page_index + 1, idx, idx))
 
         if term_hits:
             results[term] = term_hits
@@ -766,6 +798,172 @@ def find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, m
             print(f"[INFO] No OCR matches found for: {term}")
 
     return results
+
+def find_term_coordinates_substring_approach(pdf_path, diagnoses, sim_threshold=0.75):
+    """
+    Simple approach with extensive debugging to find what's going wrong.
+    """
+    results = {}
+
+    target_dpi = 144
+    pdf_pages = convert_from_path(pdf_path, dpi=target_dpi)
+    textract_dpi = 72
+    scaling_factor = target_dpi / textract_dpi
+
+    all_words_and_boxes = []
+
+    for page_index, page in enumerate(pdf_pages):
+        width, height = page.size
+        byte_arr = BytesIO()
+        page.save(byte_arr, format='PNG')
+        image_bytes = byte_arr.getvalue()
+
+        response = textract_client.analyze_document(
+            Document={'Bytes': image_bytes},
+            FeatureTypes=['LAYOUT']
+        )
+
+        words_and_boxes = []
+        for block in response['Blocks']:
+            if block['BlockType'] == "WORD":
+                text = block['Text']
+                box = block['Geometry']['BoundingBox']
+                left = ceil(width * box['Left'] / scaling_factor)
+                top = ceil(height * box['Top'] / scaling_factor)
+                right = ceil(left + (width * box['Width']) / scaling_factor)
+                bottom = ceil(top + (height * box['Height']) / scaling_factor)
+                words_and_boxes.append((text, [
+                    (left, top), (right, top), (right, bottom), (left, bottom)
+                ]))
+
+        all_words_and_boxes.append((page_index, words_and_boxes))
+        
+        # DEBUG: Print all OCR words found on this page
+        print(f"\n[DEBUG] Page {page_index + 1} OCR Words:")
+        for i, (word, coords) in enumerate(words_and_boxes):
+            print(f"  {i}: '{word}' at {coords[0]} to {coords[2]}")
+
+    for diag in diagnoses or []:
+        term = (diag.get("term") or "").strip()
+        print(f"\n[INFO] ===== Processing term: '{term}' =====")
+        if not term:
+            continue
+
+        term_hits = []
+        
+        # Try multiple matching strategies
+        for page_index, words_and_boxes in all_words_and_boxes:
+            print(f"\n[DEBUG] Searching on page {page_index + 1}")
+            
+            # Strategy 1: Simple word-by-word exact matching
+            term_words = term.lower().split()
+            print(f"[DEBUG] Looking for words: {term_words}")
+            
+            for i, (word, coords) in enumerate(words_and_boxes):
+                word_lower = word.lower()
+                print(f"[DEBUG] word_lower: '{word_lower}'")
+                
+                # Check if this word starts our term
+                if word_lower in term_words[0] or term_words[0] in word_lower:
+                    print(f"[DEBUG] Potential start match: '{word}' matches '{term_words[0]}'")
+                    
+                    # Try to match the complete term starting from this position
+                    matched_coords = []
+                    matched_words = []
+                    j = 0  # term word index
+                    k = i  # OCR word index
+                    
+                    while j < len(term_words) and k < len(words_and_boxes):
+                        ocr_word = words_and_boxes[k][0].lower()
+                        search_word = term_words[j]
+                        
+                        # Flexible matching
+                        if (ocr_word == search_word or 
+                            search_word in ocr_word or 
+                            ocr_word in search_word or
+                            SequenceMatcher(None, ocr_word, search_word).ratio() > 0.7):
+                            
+                            matched_coords.append(words_and_boxes[k][1])
+                            matched_words.append(words_and_boxes[k][0])
+                            j += 1
+                            print(f"[DEBUG] Matched: '{ocr_word}' -> '{search_word}'")
+                        
+                        k += 1
+                        
+                        # Stop if we've gone too far without finding the next word
+                        if k - i > len(term_words) + 3:
+                            break
+                    
+                    # If we matched all words in the term
+                    if j == len(term_words):
+                        print(f"[DEBUG] ✓ Complete match found: {matched_words}")
+                        
+                        # Create bounding box
+                        all_points = [pt for coords in matched_coords for pt in coords]
+                        x0 = min(p[0] for p in all_points)
+                        y0 = min(p[1] for p in all_points)
+                        x1 = max(p[0] for p in all_points)
+                        y1 = max(p[1] for p in all_points)
+                        
+                        term_hits.append((page_index + 1, (x0, y0, x1, y1)))
+                        print(f"[DEBUG] Bounding box: ({x0}, {y0}, {x1}, {y1})")
+                        break
+            
+            # Strategy 2: If no exact match, try partial matching
+            if not term_hits:
+                print(f"[DEBUG] No exact match found, trying partial matching...")
+                
+                for word_in_term in term_words:
+                    for i, (word, coords) in enumerate(words_and_boxes):
+                        word_lower = word.lower()
+                        if (word_lower == word_in_term or 
+                            word_in_term in word_lower or 
+                            SequenceMatcher(None, word_lower, word_in_term).ratio() > 0.8):
+                            
+                            print(f"[DEBUG] Partial match: '{word}' matches '{word_in_term}'")
+                            x0, y0 = coords[0]
+                            x1, y1 = coords[2]
+                            term_hits.append((page_index + 1, (x0, y0, x1, y1)))
+
+        if term_hits:
+            results[term] = term_hits
+            print(f"[INFO] ✓ Found {len(term_hits)} matches for '{term}'")
+        else:
+            print(f"[INFO] ✗ No matches found for '{term}'")
+
+    print(f"\n[FINAL] Results: {list(results.keys())}")
+    return results
+
+
+def find_matching_word_coords(term, line_words):
+    """Find coordinates of words that match the search term"""
+    term_words = term.lower().split()
+    line_text_words = [word.lower() for word, _ in line_words]
+    
+    # Find the starting position of the term in the line
+    for i in range(len(line_text_words) - len(term_words) + 1):
+        if all(term_words[j] in line_text_words[i + j] or 
+               SequenceMatcher(None, term_words[j], line_text_words[i + j]).ratio() > 0.8
+               for j in range(len(term_words))):
+            # Return coordinates for the matched words
+            return [line_words[i + j][1] for j in range(len(term_words))]
+    
+    return []
+
+
+def find_fuzzy_substring_coords(term, line_words, threshold=0.8):
+    """Find coordinates using fuzzy matching for substrings"""
+    term_lower = term.lower()
+    
+    # Try different word combinations
+    for start_idx in range(len(line_words)):
+        for end_idx in range(start_idx + 1, len(line_words) + 1):
+            word_sequence = ' '.join([word for word, _ in line_words[start_idx:end_idx]])
+            
+            if SequenceMatcher(None, word_sequence.lower(), term_lower).ratio() >= threshold:
+                return [coords for _, coords in line_words[start_idx:end_idx]]
+    
+    return []
 
 # def normalize_text(text):
 #     """Normalize text by lowering, removing extra spaces and punctuation."""

@@ -2,7 +2,7 @@ import json
 from typing import List, Dict
 from new_cc_poc import POC
 from find_bounding_box import find_term_coordinates_in_pdf
-from ocr import find_term_coordinates_with_ocr, find_term_coordinates_with_ocr_v1, find_term_coordinates_with_ocr_v2, find_term_coordinates_with_ocr_v3, find_term_coordinates_with_ocr_v4, find_term_coordinates_with_ocr_v5, find_term_coordinates_with_ocr_v6, find_term_coordinates_with_ocr_v7, highlight_terms_in_pdf, highlight_terms_with_ocr_coordinates, highlight_terms_with_ocr_coordinates_v2, highlight_terms_with_ocr_coordinates_v3, highlight_terms_with_ocr_coordinates_v4
+from ocr import find_term_coordinates_substring_approach, find_term_coordinates_with_ocr, find_term_coordinates_with_ocr_v1, find_term_coordinates_with_ocr_v2, find_term_coordinates_with_ocr_v3, find_term_coordinates_with_ocr_v4, find_term_coordinates_with_ocr_v5, find_term_coordinates_with_ocr_v6, find_term_coordinates_with_ocr_v7, highlight_terms_in_pdf, highlight_terms_with_ocr_coordinates, highlight_terms_with_ocr_coordinates_v2, highlight_terms_with_ocr_coordinates_v3, highlight_terms_with_ocr_coordinates_v4
 
 
 def get_snomed_codes_for_active_diagonosis(final_active_diagnosis: dict):
@@ -140,7 +140,7 @@ def main():
     print(f"Cleaned Active diagnosis: \n{cleaned}")
     
     diagnoses = cleaned['diagnoses']
-    hits = find_term_coordinates_with_ocr_v7(pdf_path, diagnoses, allow_partial=True, max_gap=1)
+    hits = find_term_coordinates_substring_approach(pdf_path, diagnoses)
     print(f"Found OCR-based bounding boxes for {len(hits)} terms in {pdf_path}")
     print(f"hits: {hits}")
 
